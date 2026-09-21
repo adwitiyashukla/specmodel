@@ -1,0 +1,108 @@
+[client]
+name = "sqlbot"
+task = "sql"
+description = "A BI startup wants a small text to SQL model that runs on a CPU box next to their warehouse, answers with one SQL statement and nothing else, and is judged by whether the query returns the right rows."
+
+[data]
+min_chars = 40
+max_chars = 6000
+val_fraction = 0.0
+max_records = 0
+seed = 1
+dedup = "exact"
+num_perm = 64
+bands = 8
+shingle = 5
+workers = 4
+
+[[data.sources]]
+name = "gretel_train"
+url = "https://huggingface.co/datasets/gretelai/synthetic_text_to_sql/resolve/main/synthetic_text_to_sql_train.snappy.parquet"
+format = "parquet"
+split = "train"
+
+[[data.sources]]
+name = "gretel_test"
+url = "https://huggingface.co/datasets/gretelai/synthetic_text_to_sql/resolve/main/synthetic_text_to_sql_test.snappy.parquet"
+format = "parquet"
+split = "val"
+
+[tokenizer]
+vocab_size = 8192
+sample_bytes = 100000000
+
+[model]
+dim = 384
+n_layers = 6
+n_heads = 6
+n_kv_heads = 2
+seq_len = 768
+rope_theta = 10000.0
+
+[pretrain]
+tokens = 80000000
+batch_tokens = 98304
+micro_batch = 32
+lr = 0.001
+min_lr = 0.0001
+warmup_steps = 200
+weight_decay = 0.1
+grad_clip = 1.0
+eval_every = 200
+eval_batches = 20
+checkpoint_every = 200
+log_every = 20
+dtype = "auto"
+compile = false
+seed = 1
+
+[sft]
+epochs = 2
+lr = 0.0001
+batch_size = 32
+max_examples = 0
+warmup_steps = 100
+
+[dpo]
+beta = 0.1
+lr = 0.00001
+pairs = 4000
+epochs = 1
+batch_size = 8
+candidates = 4
+temperature = 0.8
+warmup_steps = 20
+
+[generation]
+max_new_tokens = 160
+temperature = 0.0
+top_p = 1.0
+top_k = 0
+repetition_penalty = 1.0
+
+[eval]
+samples = 1000
+batch_size = 64
+perplexity_batches = 50
+
+[[eval.gates]]
+metric = "execution_accuracy"
+min = 0.4
+
+[[eval.gates]]
+metric = "valid_rate"
+min = 0.8
+
+[task]
+timeout_ms = 2000
+max_rows = 1000
+
+[export]
+quantize = "int8"
+
+[serve]
+system_prompt = "You translate questions about a database into one SQL statement. Reply with the SQL only."
+stop = [";"]
+example = "Schema:\nCREATE TABLE orders (id INT, customer TEXT, amount DECIMAL(10,2), placed_on DATE);\nINSERT INTO orders VALUES (1, 'Ana', 120.50, '2024-01-05'), (2, 'Ben', 80.00, '2024-02-11'), (3, 'Ana', 45.25, '2024-02-20');\n\nQuestion: What is the total order amount per customer?"
+max_batch = 8
+batch_wait_ms = 20

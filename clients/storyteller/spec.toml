@@ -1,0 +1,102 @@
+[client]
+name = "storyteller"
+task = "story"
+description = "An ed-tech app wants a bedtime story model for children aged 4 to 8 that runs on the device, never uses words from their banned list, and works the words a parent picks into the story."
+
+[data]
+min_chars = 200
+max_chars = 3000
+val_fraction = 0.002
+max_records = 0
+seed = 1
+dedup = "minhash"
+num_perm = 64
+bands = 8
+shingle = 5
+workers = 4
+
+[[data.sources]]
+name = "tinystories"
+url = "https://huggingface.co/datasets/roneneldan/TinyStories/resolve/main/TinyStories_all_data.tar.gz"
+format = "tinystories"
+split = "auto"
+
+[tokenizer]
+vocab_size = 8192
+sample_bytes = 200000000
+
+[model]
+dim = 512
+n_layers = 8
+n_heads = 8
+n_kv_heads = 4
+seq_len = 512
+rope_theta = 10000.0
+
+[pretrain]
+tokens = 500000000
+batch_tokens = 131072
+micro_batch = 32
+lr = 0.0006
+min_lr = 0.00006
+warmup_steps = 500
+weight_decay = 0.1
+grad_clip = 1.0
+eval_every = 500
+eval_batches = 20
+checkpoint_every = 500
+log_every = 20
+dtype = "auto"
+compile = false
+seed = 1
+
+[sft]
+epochs = 1
+lr = 0.0001
+batch_size = 32
+max_examples = 100000
+warmup_steps = 100
+
+[dpo]
+beta = 0.1
+lr = 0.00001
+pairs = 4000
+epochs = 1
+batch_size = 8
+candidates = 4
+temperature = 1.0
+warmup_steps = 20
+
+[generation]
+max_new_tokens = 320
+temperature = 0.8
+top_p = 0.95
+top_k = 50
+repetition_penalty = 1.1
+
+[eval]
+samples = 1000
+batch_size = 64
+perplexity_batches = 50
+
+[[eval.gates]]
+metric = "pass_rate"
+min = 0.5
+
+[[eval.gates]]
+metric = "banned_rate"
+max = 0.01
+
+[task]
+min_words = 50
+max_words = 300
+banned_words = ["kill", "killed", "gun", "blood", "dead", "die", "died", "hate", "stupid", "knife", "hell", "damn"]
+
+[export]
+quantize = "int8"
+
+[serve]
+system_prompt = "You write short bedtime stories for children aged 4 to 8."
+example = "Write a short story for a child. Use these words: rocket, cookie, brave. Include: dialogue."
+max_batch = 8
+batch_wait_ms = 20

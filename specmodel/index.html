@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>specmodel</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 820px; margin: 32px auto; padding: 0 16px; color: #222; background: #fafafa; }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  p.sub { color: #666; margin-top: 0; }
+  label { display: block; font-size: 14px; margin: 14px 0 4px; }
+  select, textarea, button { font: inherit; }
+  select { padding: 6px; }
+  textarea { width: 100%; box-sizing: border-box; min-height: 120px; padding: 8px; }
+  button { padding: 8px 14px; margin-right: 8px; margin-top: 8px; cursor: pointer; }
+  pre { background: #fff; border: 1px solid #ddd; padding: 12px; white-space: pre-wrap; min-height: 80px; }
+  .meta { font-size: 13px; color: #666; }
+</style>
+</head>
+<body>
+<h1>specmodel</h1>
+<p class="sub">Custom language models trained from scratch for each client spec. Pick a model, send a prompt, watch it stream.</p>
+<label for="model">Model</label>
+<select id="model"></select>
+<p class="meta" id="description"></p>
+<label for="prompt">Prompt</label>
+<textarea id="prompt"></textarea>
+<div>
+  <button id="send">Send</button>
+  <button id="example">Load example</button>
+</div>
+<label>Output</label>
+<pre id="output"></pre>
+<p class="meta" id="status"></p>
+<script>
+const models = {};
+async function loadModels() {
+  const res = await fetch("/v1/models");
+  const data = await res.json();
+  const select = document.getElementById("model");
+  for (const m of data.data) {
+    models[m.id] = m;
+    const opt = document.createElement("option");
+    opt.value = m.id;
+    opt.textContent = m.id;
+    select.appendChild(opt);
+  }
+  select.onchange = showModel;
+  showModel();
+}
+function showModel() {
+  const m = models[document.getElementById("model").value];
+  document.getElementById("description").textContent = m ? m.description : "";
+}
+document.getElementById("example").onclick = () => {
+  const m = models[document.getElementById("model").value];
+  document.getElementById("prompt").value = m ? m.example : "";
+};
+document.getElementById("send").onclick = async () => {
+  const model = document.getElementById("model").value;
+  const prompt = document.getElementById("prompt").value;
+  const out = document.getElementById("output");
+  const status = document.getElementById("status");
+  out.textContent = "";
+  status.textContent = "generating";
+  const started = performance.now();
+  let tokens = 0;
+  const res = await fetch("/v1/chat/completions", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({model: model, messages: [{role: "user", content: prompt}], stream: true})
+  });
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let finish = "";
+  while (true) {
+    const {value, done} = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, {stream: true});
+    const lines = buffer.split("\n");
+    buffer = lines.pop();
+    for (const line of lines) {
+      if (!line.startsWith("data: ")) continue;
+      const payload = line.slice(6);
+      if (payload === "[DONE]") continue;
+      const chunk = JSON.parse(payload);
+      const choice = chunk.choices[0];
+      if (choice.delta && choice.delta.content) { out.textContent += choice.delta.content; tokens += 1; }
+      if (choice.finish_reason) finish = choice.finish_reason;
+    }
+  }
+  const seconds = (performance.now() - started) / 1000;
+  status.textContent = "finish: " + finish + ", " + seconds.toFixed(1) + "s";
+};
+loadModels();
+</script>
+</body>
+</html>

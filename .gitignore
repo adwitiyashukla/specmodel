@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+runs/
+data/
+export/
+*.bin
+*.pt
+*.safetensors
+*.tar.gz
+*.parquet
+.venv/
+venv/
