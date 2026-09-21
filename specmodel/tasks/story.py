@@ -47,13 +47,15 @@ def score(rec, output, spec):
     dialogue_ok = ('"' in output) if "Dialogue" in features else True
     banned = any(_has_word(w, output) for w in task.banned_words)
     length_ok = task.min_words <= n_words <= task.max_words
-    passed = all_words and dialogue_ok and not banned and length_ok
+    ended = output.rstrip().endswith((".", "!", "?", '"'))
+    passed = all_words and dialogue_ok and not banned and length_ok and ended
     return {
         "word_coverage": coverage,
         "all_words": float(all_words),
         "dialogue": float(dialogue_ok),
         "banned": float(banned),
         "length_ok": float(length_ok),
+        "ended": float(ended),
         "passed": float(passed),
         "n_words": float(n_words),
     }
@@ -67,6 +69,7 @@ def summarize(rows):
         "dialogue_rate": sum(r["dialogue"] for r in rows) / n,
         "banned_rate": sum(r["banned"] for r in rows) / n,
         "length_rate": sum(r["length_ok"] for r in rows) / n,
+        "ended_rate": sum(r["ended"] for r in rows) / n,
         "pass_rate": sum(r["passed"] for r in rows) / n,
         "mean_words": sum(r["n_words"] for r in rows) / n,
     }

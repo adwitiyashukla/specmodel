@@ -39,7 +39,7 @@ def pick_dtype(name, device):
     if device.type != "cuda":
         return torch.float32
     if name == "auto":
-        return torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
+        return torch.bfloat16 if torch.cuda.get_device_capability(device)[0] >= 8 else torch.float16
     return {"float32": torch.float32, "float16": torch.float16, "bfloat16": torch.bfloat16}[name]
 
 

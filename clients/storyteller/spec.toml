@@ -68,7 +68,7 @@ temperature = 1.0
 warmup_steps = 20
 
 [generation]
-max_new_tokens = 320
+max_new_tokens = 440
 temperature = 0.8
 top_p = 0.95
 top_k = 50

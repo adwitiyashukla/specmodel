@@ -17,6 +17,8 @@ def test_story_scoring(story_spec):
     good = ("The frog and the kite were friends. " * 8) + '"Hello," said the frog. ' + ("They played all day. " * 10)
     s = story.score(rec, good, spec)
     assert s["passed"] == 1.0 and s["word_coverage"] == 1.0 and s["banned"] == 0.0 and s["dialogue"] == 1.0
+    cut = story.score(rec, good + " Then the frog", spec)
+    assert cut["ended"] == 0.0 and cut["passed"] == 0.0
     missing = story.score(rec, "The frogs flew kites happily. " * 20, spec)
     assert missing["word_coverage"] == 1.0
     no_quotes = story.score(rec, "The frog liked the kite. " * 20, spec)
@@ -26,7 +28,7 @@ def test_story_scoring(story_spec):
     short = story.score(rec, '"Frog kite," she said.', spec)
     assert short["length_ok"] == 0.0
     summary = story.summarize([s, missing, no_quotes, banned])
-    assert summary["pass_rate"] == 0.25 and summary["banned_rate"] == 0.25
+    assert summary["pass_rate"] == 0.25 and summary["banned_rate"] == 0.25 and summary["ended_rate"] == 1.0
     assert story.violation("a gun", spec) and not story.violation("a sun", spec)
     assert (
         story.build_prompt(["a"], ["BadEnding"])
