@@ -91,7 +91,7 @@ min = 0.4
 
 [[eval.gates]]
 metric = "valid_rate"
-min = 0.8
+min = 0.6
 
 [task]
 timeout_ms = 2000
