@@ -1,0 +1,47 @@
+name: keepalive
+
+on:
+  schedule:
+    - cron: "0 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: keepalive
+  cancel-in-progress: false
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SPACE_ID: adwitiyashukla/specmodel
+    steps:
+      - run: |
+          set -uo pipefail
+          api="https://huggingface.co/api/spaces/${SPACE_ID}"
+          host=$(curl -sS --max-time 30 "$api" | jq -r '.host // ""')
+          if [ -z "$host" ]; then
+            echo "::error::could not resolve a URL for ${SPACE_ID}"
+            exit 1
+          fi
+          echo "Space URL: ${host}"
+          for attempt in $(seq 1 20); do
+            curl -sS -o /dev/null --max-time 30 "${host}/health" || true
+            stage=$(curl -sS --max-time 30 "$api" | jq -r '.runtime.stage // "UNKNOWN"')
+            echo "attempt ${attempt}: ${stage}"
+            case "$stage" in
+              RUNNING|RUNNING_BUILDING)
+                exit 0
+                ;;
+              PAUSED|BUILD_ERROR|RUNTIME_ERROR|CONFIG_ERROR)
+                echo "::error::${SPACE_ID} is in state ${stage}"
+                exit 1
+                ;;
+            esac
+            sleep 20
+          done
+          echo "::error::${SPACE_ID} did not reach RUNNING"
+          exit 1
