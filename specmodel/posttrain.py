@@ -14,14 +14,6 @@ from specmodel.tokenizer import Tokenizer, chat_example_ids, chat_prompt_ids
 from specmodel.train import Trainer, load_checkpoint, pick_dtype, setup_distributed, teardown_distributed, wrap_model
 
 
-def stage_checkpoint(run_dir, order=("dpo", "sft", "pretrain")):
-    for stage in order:
-        path = Path(run_dir) / stage / "ckpt.pt"
-        if path.exists():
-            return stage, path
-    raise FileNotFoundError(f"no checkpoint under {run_dir}")
-
-
 def collate(examples, pad_id, device):
     length = max(len(ids) for ids, _ in examples)
     x = torch.full((len(examples), length), pad_id, dtype=torch.long)

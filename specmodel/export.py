@@ -6,11 +6,11 @@ import torch
 from safetensors.torch import load_file, save_file
 
 from specmodel.model import ModelConfig, Transformer
-from specmodel.posttrain import stage_checkpoint
 from specmodel.spec import load_spec
 from specmodel.tokenizer import Tokenizer
 
 QUANT_SUFFIXES = ("wq.weight", "wk.weight", "wv.weight", "wo.weight", "w1.weight", "w2.weight", "w3.weight")
+STAGES = ("pretrain", "sft", "dpo")
 
 
 def quantize_int8(weight):
@@ -19,9 +19,39 @@ def quantize_int8(weight):
     return q, scale.float()
 
 
+def _read_json(path):
+    path = Path(path)
+    if not path.exists():
+        return None
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def pick_stage(spec, run_dir):
+    run_dir = Path(run_dir)
+    gate = spec.eval.gates[0] if spec.eval.gates else None
+    latest = None
+    scored = []
+    for stage in STAGES:
+        path = run_dir / stage / "ckpt.pt"
+        if not path.exists():
+            continue
+        latest = (stage, path, "latest")
+        report = _read_json(run_dir / "eval" / f"{stage}.json")
+        if gate and report and gate["metric"] in report["metrics"]:
+            value = report["metrics"][gate["metric"]]
+            scored.append((value if "min" in gate else -value, len(scored), stage, path))
+    if latest is None:
+        raise FileNotFoundError(f"no checkpoint under {run_dir}")
+    if not scored:
+        return latest
+    _, _, stage, path = max(scored)
+    return stage, path, gate["metric"]
+
+
 def export(spec, run_dir):
     run_dir = Path(run_dir)
-    stage, path = stage_checkpoint(run_dir)
+    stage, path, picked_by = pick_stage(spec, run_dir)
     state = torch.load(path, map_location="cpu", weights_only=False)
     out = run_dir / "export"
     out.mkdir(parents=True, exist_ok=True)
@@ -40,6 +70,7 @@ def export(spec, run_dir):
         "model": state["config"],
         "quantize": spec.export.quantize,
         "stage": stage,
+        "picked_by": picked_by,
         "client": spec.client.name,
         "task": spec.client.task,
     }
@@ -49,7 +80,7 @@ def export(spec, run_dir):
     shutil.copy(spec.path, out / "spec.toml")
     write_model_card(spec, run_dir)
     size = (out / "model.safetensors").stat().st_size
-    print(f"export: {stage} checkpoint, {spec.export.quantize}, {size / 1e6:.1f} MB", flush=True)
+    print(f"export: {stage} checkpoint picked by {picked_by}, {spec.export.quantize}, {size / 1e6:.1f} MB", flush=True)
     return out
 
 
@@ -75,19 +106,12 @@ def load_export(export_dir, device):
     return model, tok, spec
 
 
-def _read_json(path):
-    path = Path(path)
-    if not path.exists():
-        return None
-    with open(path, encoding="utf-8") as f:
-        return json.load(f)
-
-
 def write_model_card(spec, run_dir):
     run_dir = Path(run_dir)
     out = run_dir / "export"
     pretrain = _read_json(run_dir / "pretrain" / "summary.json") or {}
-    reports = {s: _read_json(run_dir / "eval" / f"{s}.json") for s in ("pretrain", "sft", "dpo", "export")}
+    config = _read_json(out / "config.json") or {}
+    reports = {s: _read_json(run_dir / "eval" / f"{s}.json") for s in (*STAGES, "export")}
     reports = {s: r for s, r in reports.items() if r}
     m = spec.model
     lines = [f"# {spec.client.name}", "", spec.client.description, "", "## Model", ""]
@@ -103,9 +127,12 @@ def write_model_card(spec, run_dir):
             f"({pretrain.get('train_seconds', 0) / 60:.0f} minutes, {pretrain.get('world')} process(es), "
             f"{pretrain.get('dtype')})."
         )
+    picked_by = config.get("picked_by", "latest")
+    how = "the latest stage" if picked_by == "latest" else f"the stage with the best {picked_by}"
     lines.append(
         f"Post training: supervised fine tuning, then DPO on preference pairs mined from the model's own "
-        f"failed samples. Export: {spec.export.quantize} weights in safetensors."
+        f"failed samples. Export: the {config.get('stage', 'final')} checkpoint ({how}), "
+        f"{spec.export.quantize} weights in safetensors."
     )
     if reports:
         keys = []
